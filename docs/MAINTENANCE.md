@@ -118,21 +118,23 @@ Measured cost: **~13.5 s per call** in the smoke test (`quote_get(TVC:DXY)` with
 - **Ad-hoc single off-chart quote / bars:** `quote_get(symbol=X)` / `data_get_ohlcv(symbol=X)` works but accept the 10–15 s + UI flicker.
 - **Pair-trade leg monitoring:** add both symbols to a watchlist + `watchlist_get` once per check.
 
-## Backlog (deferred to future patches batches)
+## Backlog
 
-- ~~**`failure-log.js` rotation.**~~ **DONE in PR #14** (`a63e904`) — date-based + size-based (10 MB default, env override `TV_MCP_FAILURE_LOG_MAX_BYTES`).
-- ~~**Smoke-test via MCP transport.**~~ **DONE in PR #16** (`ec557d4`) — `scripts/smoke-mcp.js` + `npm run smoke:mcp` (14/14).
-- ~~**Smoke-test coverage expansion.**~~ **DONE in PR #15** — core-layer smoke now 20/20; stdio smoke 14/14.
-- ~~**ESLint over `tests/`.**~~ **DONE in PR #13** (`fddd707`).
-- ~~**CI matrix.**~~ **DONE in PR #13** — matrix `[20, 22]`.
+Items still open for future maintenance batches:
+
+- **`pine_new` / `pine_open` / `pine_save` smoke-mcp coverage.** Pine Editor open path is patched (PRs #20+#21) but smoke-mcp has no `pine_new` assertion. Worth a side-effect-free test (delete the temporary script via `pine_save` cleanup after).
+- **`pine_open` / `pine_save` selector audit.** Likely same TV 3.1.0 drift class as `pine_new`. Not yet verified.
+- **Wider locale handling in selectors.** RU `aria-label` added for Pine; same approach could harden `watchlist_add` / indicator-search dialogs (other locales: DE, ES, ZH, etc.).
 - **PR review (solo-dev workflow).** This fork is single-maintainer R&D, so PRs are self-merged after self-review. If anyone else starts contributing, switch to required-review flow.
-- **Remaining upstream bugs in our fork:** #142 (stuck state after failed `chart_manage_indicator add` blocks subsequent adds — needs UI-state cleanup / reset, no upstream PR yet) and #164 (`watchlist_add` button-not-found — selector/timing issue, no upstream PR yet). Both need novel debugging rather than cherry-pick; deferred to a future patches batch. #143 and #144 are now closed (cherry-picked from community forks — see Applied patches table).
-- ~~**OperationResult `payload.success` legacy noise.**~~ **DONE in PR #15** — `wrapOk` now strips cosmetic `success: true` and translates `success: false` / stale-feed sentinel into proper `err()`. Verified via MCP-stdio smoke `FAIL_SUCCESS_NOISE` guard.
 
-## Backlog (still open)
+Items closed since 3.0.0 (recorded for audit trail — see Applied patches table for SHAs):
 
-- ~~**Upstream bugs #142 / #164.**~~ **DONE in PR #19** — both fixed with selector / modal-cleanup rewrites, verified live. See Applied patches table.
-- **PR review (solo-dev workflow).** This fork is single-maintainer R&D, so PRs are self-merged after self-review. If anyone else starts contributing, switch to required-review flow.
-- **`pine_new` / `pine_open` / `pine_save` smoke-mcp coverage.** The Pine Editor open path is now patched, but smoke-mcp has no pine_new assertion yet — selector drift could recur unnoticed. Worth a side-effect-free pine_new test (delete the script via `pine_save` cleanup after).
-- **`pine_open` / `pine_save` selector audit.** Likely same TV 3.1.0 drift class as `pine_new` (PR #20). Not yet verified.
-- **Wider locale handling in selectors.** RU locale aria-label added for Pine; same approach could harden watchlist_add / indicator search dialogs (other locales: DE, ES, ZH, etc.).
+- ~~`failure-log.js` rotation~~ → PR #14 (date + 10 MB cap, env override `TV_MCP_FAILURE_LOG_MAX_BYTES`).
+- ~~Smoke-test via MCP transport~~ → PR #16 (`scripts/smoke-mcp.js` + `npm run smoke:mcp`).
+- ~~Smoke-test coverage expansion~~ → PR #15 (core-layer 20, stdio 15).
+- ~~ESLint over `tests/`~~ → PR #13.
+- ~~CI matrix `[20, 22]`~~ → PR #13.
+- ~~OperationResult `payload.success` legacy noise~~ → PR #15 (`wrapOk` strip + translate via `_shapePayload`; verified by MCP-stdio `FAIL_SUCCESS_NOISE` guard).
+- ~~Upstream bugs #142 + #164~~ → PR #19 (modal Escape cleanup + watchlist selector chain rewrite, both verified live).
+- ~~Upstream bugs #143 + #144~~ → PR #17 (cherry-picks of community forks).
+- ~~Pine Editor selector drift + Alt+E modifier bug~~ → PRs #20 + #21 (own discovery surfaced through #142 live verify).
