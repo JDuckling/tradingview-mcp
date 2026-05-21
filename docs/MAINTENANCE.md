@@ -10,6 +10,7 @@ This fork is the AlphaSignal data-MCP. Upstream is `tradesdontlie/tradingview-mc
 | #140 dependency | alphasignal-main | `fc7319b` | Stubs in `src/fallback/` so PR #154's `isFallbackActive` import doesn't break. |
 | #171 (`evaluate is not defined`) | alphasignal-main | `06668f6` | DI miss in `src/core/chart.js` — 3 functions (`getVisibleRange`, `scrollToDate`, `symbolInfo`) didn't take `_deps` / call `_resolve`. |
 | #116 + #137 (drawing API broken) | alphasignal-main | `d835799` | Same DI miss in `src/core/drawing.js` — 4 functions (`listDrawings`, `getProperties`, `removeOne`, `clearAll`). Caught by ESLint baseline. |
+| #140 follow-up (2.0.1) | alphasignal-fix-incomplete | `344ce31` | MCP tool `data_get_ohlcv` schema in `src/tools/data.js` didn't actually expose the `symbol` parameter even though `core.getOhlcv` accepted one — the 2.0.0 release fixed #140 only for `quote_get` in practice. Also hardens `src/lib/failure-log.js mask()` against circular refs / deep nests (would have crashed the server). |
 
 ## Local quality gates
 
@@ -17,7 +18,7 @@ This fork is the AlphaSignal data-MCP. Upstream is `tradesdontlie/tradingview-mc
 
 `npm run test:unit` — node:test runner over `pine_analyze.test.js` + `cli.test.js`. 29 tests, no TV required.
 
-`npm run smoke` — `scripts/smoke-test.js`. 11 structured assertions (status / schema / latency) against the live TV Desktop session. Includes explicit regression guards for #140 and all three #171-fixed functions. Requires TV running with `--remote-debugging-port=9222`. Use this before merging to `main`.
+`npm run smoke` — `scripts/smoke-test.js`. 14 structured assertions (status / schema / latency) against the live TV Desktop session. Includes explicit regression guards for #140 on both `quote_get` and `data_get_ohlcv` paths, all three #171-fixed functions, and the #116/#137 drawing API. Requires TV running with `--remote-debugging-port=9222`. Use this before merging to `main`.
 
 `npm test` — full e2e (requires TV). Optional in maintenance flow.
 

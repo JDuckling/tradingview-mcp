@@ -1,19 +1,26 @@
 /**
  * JSON-lines failure log for MCP tool invocations.
  *
- * Inspired by webull-agent-skills audit-event pattern. Goal: when a tool
- * throws or returns an error response during a live Claude Code session,
- * capture enough context to debug the regression after the fact — without
- * polluting stdout (which the MCP stdio transport uses) and without
- * forcing per-tool instrumentation.
+ * Adapted from webull-agent-skills' audit-event idea (ORDER_RESULT / etc.)
+ * for the read-only data-MCP context: when a tool throws or returns an
+ * error response during a live Claude Code session, capture enough context
+ * to debug the regression after the fact — without polluting stdout
+ * (which the MCP stdio transport uses) and without forcing per-tool
+ * instrumentation.
  *
  * Path: $TV_MCP_FAILURE_LOG (default: ~/.tradingview-mcp/failures.jsonl).
  * Format: one JSON object per line, append-only, no rotation (rotate manually
  * if file exceeds a few MB — daily rotation is a future enhancement).
  *
- * Sensitive-field masking: keys matching SENSITIVE_KEY_RE in `args` get
- * value replaced with "[REDACTED]" before write. Recursive over nested
- * objects/arrays.
+ * Safety guarantees (any of these failing must NOT crash the MCP server):
+ *   - Sensitive-field masking: keys matching SENSITIVE_KEY_RE in `args`
+ *     get value replaced with "[REDACTED]" before write. Recursive over
+ *     nested objects/arrays.
+ *   - Circular references / pathologically deep nests in `args`: caught by
+ *     `safeSerialiseArgs()` and replaced with a sentinel string instead of
+ *     propagating a RangeError to the server.
+ *   - Filesystem errors (mkdirSync / appendFileSync): caught, latched into
+ *     `initFailed` so we don't spam stderr, server continues running.
  */
 import { mkdirSync, appendFileSync } from 'node:fs';
 import { homedir } from 'node:os';
