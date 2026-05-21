@@ -62,6 +62,20 @@ function trimStack(stack) {
 }
 
 /**
+ * Serialise args defensively: catches circular references, getter throws,
+ * and stack-overflow on deeply nested objects. Returns a fallback string
+ * rather than throwing — the log itself must never crash the server.
+ */
+function safeSerialiseArgs(args) {
+  if (args === undefined) return undefined;
+  try {
+    return truncate(JSON.stringify(mask(args)), MAX_ARGS_LEN);
+  } catch (e) {
+    return `[failure-log: args serialisation failed: ${String(e?.message || e).slice(0, 200)}]`;
+  }
+}
+
+/**
  * Record a tool failure. Non-throwing: log itself never crashes the server.
  * @param {object} entry
  * @param {string} entry.tool — MCP tool name (e.g. "quote_get")
@@ -77,7 +91,7 @@ export function logFailure({ tool, args, error, stack, kind = 'throw' }) {
     tool: tool || 'unknown',
     kind,
     error: truncate(String(error || ''), 500),
-    args: args !== undefined ? truncate(JSON.stringify(mask(args)), MAX_ARGS_LEN) : undefined,
+    args: safeSerialiseArgs(args),
     stack: trimStack(stack),
   };
   try {

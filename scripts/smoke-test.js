@@ -70,6 +70,26 @@ const ASSERTIONS = [
       Array.isArray(r?.last_5_bars),
   },
   {
+    name: 'data_get_ohlcv (cross-symbol TVC:DXY, verifies #140 on ohlcv path)',
+    timeout: TIMEOUT_LONG_MS,
+    fn: () => data.getOhlcv({ count: 10, summary: true, symbol: 'TVC:DXY' }),
+    assert: r => {
+      if (r?.stale_feed === true) {
+        return r?.requested_symbol === 'TVC:DXY';
+      }
+      return (
+        r?.success === true &&
+        r?.bar_count === 10 &&
+        isFiniteNumber(r?.open) &&
+        isFiniteNumber(r?.close) &&
+        Array.isArray(r?.last_5_bars) &&
+        // DXY trades roughly 90-115 — sanity guard so we don't accidentally
+        // read MSTR / BTC / AAPL prices if the wrapper silently fails.
+        r.close > 50 && r.close < 200
+      );
+    },
+  },
+  {
     name: 'quote_get (TVC:DXY, verifies #140)',
     timeout: TIMEOUT_LONG_MS,
     fn: () => data.getQuote({ symbol: 'TVC:DXY' }),

@@ -3,11 +3,12 @@ import { jsonResult } from './_format.js';
 import * as core from '../core/data.js';
 
 export function registerDataTools(server) {
-  server.tool('data_get_ohlcv', 'Get OHLCV bar data from the chart. Use summary=true for compact stats instead of all bars (saves context).', {
+  server.tool('data_get_ohlcv', 'Get OHLCV bar data from the chart. Use summary=true for compact stats instead of all bars (saves context). Pass symbol to read a different ticker — wrapper switches chart to that symbol, reads, then restores (cost: ~10-15 s per cross-symbol call).', {
     count: z.coerce.number().optional().describe('Number of bars to retrieve (max 500, default 100)'),
     summary: z.coerce.boolean().optional().describe('Return summary stats (high, low, open, close, avg volume, range) instead of all bars — much smaller output'),
-  }, async ({ count, summary }) => {
-    try { return jsonResult(await core.getOhlcv({ count, summary })); }
+    symbol: z.string().optional().describe('Symbol to read (blank or matching active chart = no switch, instant). Cross-symbol reads do a real chart switch and visibly flicker the chart for ~10 s.'),
+  }, async ({ count, summary, symbol }) => {
+    try { return jsonResult(await core.getOhlcv({ count, summary, symbol })); }
     catch (err) { return jsonResult({ success: false, error: err.message }, true); }
   });
 
