@@ -4,6 +4,68 @@ All notable changes to the AlphaSignal fork of `tradingview-mcp`.
 
 This fork follows [semver](https://semver.org/) loosely: major bumps when tool response shapes change or new error sentinels appear; minor when tools are added; patch for bug fixes that preserve shapes.
 
+## [3.1.0] — 2026-05-21
+
+Five additive PRs after the 3.0.0 contract refactor. No breaking changes
+in this release; minor bump per semver because PRs #14 and #17 add new
+behavioural surface (failure-log rotation, `wait_for_render` arg).
+
+### Fixed
+
+- **#143** (`data_get_study_values` same-name dedup, PR #17, commit
+  `6c0588a`) — cherry-pick of `kuldeeppatel123/tradingview-mcp@08d44f5`.
+  Each study entry now carries `entity_id` + a normalized `inputs` map,
+  so multiple EMAs at different lengths are distinguishable. Conflict
+  resolved against the v3.0.0 fallback guard.
+- **#144** (`capture_screenshot` stale frame, PR #17, commit `141207c`)
+  — cherry-pick of `tlcreativeart-hub/tradingview-mcp@e177b56`
+  (upstream PR #148). Adds `wait_for_render` MCP arg + `waitForRender`
+  core option + `waitForChartCanvasReady()` helper in `src/wait.js`.
+  Use after `chart_set_symbol` / `chart_set_timeframe` to avoid a
+  stale-frame screenshot.
+- **wrapOk graceful-failure misclassification** (PR #15, commit
+  `94378ea`) — in 3.0.0, core functions that returned
+  `{success: false, error: '...'}` as a non-throwing failure path were
+  being wrapped as `ok({success: false, ...})`, leaving consumers with
+  `r.ok === true` despite the failure. Now translated to proper
+  `err(STATUS_CODES.INTERNAL_ERROR, raw.error, ...)`.
+- **stale-feed sentinel mis-wrap** (PR #15) — PR #154's
+  `{success: false, stale_feed: true, ...}` shape was similarly being
+  wrapped as `ok()` in 3.0.0. Now translated to
+  `err(STATUS_CODES.STALE_DATA, raw.reason, ...)` with the rest of the
+  sentinel carried in `payload`.
+
+### Added
+
+- **failure-log rotation** (PR #14, commit `a63e904`) —
+  `src/lib/failure-log.js` rotates the log on every append if the file
+  is from a previous UTC day (→ `failures.<YYYY-MM-DD>.jsonl`) or
+  exceeds `MAX_LOG_BYTES` (default 10 MB, override via
+  `TV_MCP_FAILURE_LOG_MAX_BYTES`, → `failures.<YYYY-MM-DD.HHMMSS>.jsonl`).
+  Non-throwing. 5 new tests in `tests/failure-log.test.js`.
+- **`scripts/smoke-mcp.js` + `npm run smoke:mcp`** (PR #16, commit
+  `ec557d4`) — spawns `node src/server.js`, performs MCP initialize
+  handshake over stdio JSON-RPC, validates 14 tool responses against
+  the OperationResult JSON Schema via Ajv. Closes the gap that
+  `smoke-test.js` (core-import) cannot cover. Includes a
+  `FAIL_SUCCESS_NOISE` guard that fails if Phase 6 strip regresses.
+- **Phase 6 cosmetic `success: true` strip** (PR #15) — `wrapOk` now
+  strips the field from payloads before returning ok(). Consumers read
+  straight from `r.payload.X`, no more `r.payload.success` noise.
+- **Smoke coverage** (PR #15) — core-import smoke +6 read-only tools:
+  tv_discover, tv_ui_state, alert_list, replay_status, tab_list,
+  pane_list. Total 20/20.
+- **CI matrix node 20/22** (PR #13, commit `fddd707`).
+- **ESLint over `tests/`** (PR #13) — extends `lint` script to cover
+  the test directory; baseline cleaned (4 warnings fixed).
+
+### Changed
+
+- **`failure-log.js wrapServer()`** (PR #8 ground-prepared, PR #15
+  finalised) — error-response handler reads `inner.detail` (v3) with
+  `inner.error` as a v2 legacy fallback. Done now that all tool
+  handlers emit `inner.detail`.
+
 ## [3.0.0] — 2026-05-21
 
 **Breaking change:** every MCP tool now returns a unified `OperationResult` shape instead of the previous per-tool `{success, error}` / raw payload mix. Consumers (Claude Code system.md, third-party clients) MUST update their response parsing. See `src/lib/operation-result.js` for the contract and the migration plan in `plans/2026-06-01-mcp-operation-result-contract.md`.
