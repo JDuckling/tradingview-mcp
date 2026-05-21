@@ -1,4 +1,6 @@
-# TradingView MCP Bridge
+# TradingView MCP Bridge — AlphaSignal fork
+
+> **Fork notice:** This is the AlphaSignal-maintained fork of `tradesdontlie/tradingview-mcp`. Upstream maintainer has been inactive since 2026-04-04, so we carry our own patches ahead of upstream. Patches closed in this fork (not yet in upstream): **#140** (`quote_get` ignores symbol), **#171** (`evaluate is not defined` on `chart_get_visible_range` / `chart_scroll_to_date` / `symbol_info`), **#116 + #137** (drawing API broken). See [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) for the patches log, quality gates, smoke-test, and upstream-sync procedure.
 
 Personal AI assistant for your TradingView Desktop charts. Connects Claude Code to your locally running TradingView app via Chrome DevTools Protocol for AI-assisted chart analysis, Pine Script development, and workflow automation.
 
