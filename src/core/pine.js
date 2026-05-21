@@ -48,22 +48,64 @@ export async function ensurePineEditorOpen() {
   `);
   if (already) return true;
 
+  // Path 1: internal API.
   await evaluate(`
     (function() {
-      var bwb = window.TradingView && window.TradingView.bottomWidgetBar;
-      if (!bwb) return;
-      if (typeof bwb.activateScriptEditorTab === 'function') bwb.activateScriptEditorTab();
-      else if (typeof bwb.showWidget === 'function') bwb.showWidget('pine-editor');
+      try {
+        var bwb = window.TradingView && window.TradingView.bottomWidgetBar;
+        if (!bwb) return;
+        if (typeof bwb.activateScriptEditorTab === 'function') bwb.activateScriptEditorTab();
+        else if (typeof bwb.showWidget === 'function') bwb.showWidget('pine-editor');
+      } catch (e) {}
     })()
   `);
 
+  // Path 2: expanded selector chain. The historical `[aria-label="Pine"]`
+  // and `[data-name="pine-dialog-button"]` no longer match in TV 3.1.0+
+  // (button renamed, aria-labels localised, widgetbar reshuffled). Same
+  // failure mode as #164 watchlist_add.
   await evaluate(`
     (function() {
-      var btn = document.querySelector('[aria-label="Pine"]')
-        || document.querySelector('[data-name="pine-dialog-button"]');
-      if (btn) btn.click();
+      var selectors = [
+        '[data-name="pine-editor-button"]',
+        '[data-name="pine-dialog-button"]',
+        '[aria-label="Pine Editor"]',
+        '[aria-label*="Pine Editor"]',
+        '[aria-label="Pine"]',
+        '[aria-label*="Pine"]',
+        '[aria-label*="редактор Pine"]',
+        '[title*="Pine"]',
+        'button[class*="pineEditor"]',
+      ];
+      for (var s = 0; s < selectors.length; s++) {
+        var btn = document.querySelector(selectors[s]);
+        if (btn && btn.offsetParent !== null) { btn.click(); return; }
+      }
+      // Fallback: scan bottom widget bar tabs for one mentioning Pine.
+      var bar = document.querySelector('[class*="bottomWidgetBar"]')
+        || document.querySelector('[class*="bottom-widget-bar"]');
+      if (bar) {
+        var tabs = bar.querySelectorAll('button, [role="tab"]');
+        for (var i = 0; i < tabs.length; i++) {
+          var label = (tabs[i].textContent || '') + ' ' + (tabs[i].getAttribute('aria-label') || '');
+          if (/pine/i.test(label)) { tabs[i].click(); return; }
+        }
+      }
     })()
   `);
+
+  // Path 3: Alt+E keyboard shortcut (TV documented Pine Editor toggle).
+  // Needs CDP-level Input.dispatchKeyEvent — a synthetic page KeyboardEvent
+  // doesn't trigger TV's hotkey handlers.
+  try {
+    const client = await getClient();
+    await client.Input.dispatchKeyEvent({
+      type: 'keyDown', key: 'e', code: 'KeyE', modifiers: 8,  // 8 = Alt
+    });
+    await client.Input.dispatchKeyEvent({
+      type: 'keyUp', key: 'e', code: 'KeyE', modifiers: 8,
+    });
+  } catch { /* best-effort */ }
 
   for (let i = 0; i < 50; i++) {
     await new Promise(r => setTimeout(r, 200));
