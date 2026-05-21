@@ -27,6 +27,7 @@ import * as data from '../src/core/data.js';
 import * as watchlist from '../src/core/watchlist.js';
 import * as pine from '../src/core/pine.js';
 import * as capture from '../src/core/capture.js';
+import * as drawing from '../src/core/drawing.js';
 
 const TIMEOUT_DEFAULT_MS = 8000;
 const TIMEOUT_LONG_MS = 15000;
@@ -151,6 +152,27 @@ const ASSERTIONS = [
       isNonEmptyString(r?.file_path) &&
       isFiniteNumber(r?.size_bytes) &&
       r.size_bytes > 0,
+  },
+  {
+    name: 'draw_list (verifies #116/#137)',
+    fn: () => drawing.listDrawings(),
+    assert: r =>
+      r?.success === true &&
+      typeof r?.count === 'number' &&
+      Array.isArray(r?.shapes),
+  },
+  {
+    name: 'draw_get_properties (verifies #116/#137; read-only on first shape if any)',
+    fn: async () => {
+      const list = await drawing.listDrawings();
+      if (!list?.shapes?.length) {
+        return { success: true, _skipped: 'no shapes on chart' };
+      }
+      return drawing.getProperties({ entity_id: list.shapes[0].id });
+    },
+    assert: r =>
+      r?.success === true &&
+      (r?._skipped || isNonEmptyString(r?.entity_id)),
   },
 ];
 
