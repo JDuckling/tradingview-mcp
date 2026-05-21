@@ -147,10 +147,12 @@ export function wrapServer(server) {
           try {
             inner = JSON.parse(result?.content?.[0]?.text || '{}');
           } catch { inner = {}; }
+          // v3.0.0 uses OperationResult.detail; legacy v2.x used inner.error.
+          // Read both so partially-migrated states don't lose error text.
           logFailure({
             tool: name,
             args,
-            error: inner?.error || 'error_response (no error field)',
+            error: inner?.detail || inner?.error || 'error_response (no detail/error field)',
             kind: 'error_response',
           });
         }
