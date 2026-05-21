@@ -73,6 +73,12 @@ async function _getCurrentSymbol() {
   }
 }
 
+// Strict (case-insensitive) equality by design: if the caller asked for
+// "NASDAQ:AAPL" and the chart is on "AAPL", we DO want to switch — TV may
+// resolve the bare ticker to a different exchange than NASDAQ. The lenient
+// substring match used in `_waitForSeriesLoaded` is for the opposite
+// problem (confirming TV finished loading *whatever* it picked after our
+// setSymbol call). Don't unify the two.
 function _symbolsMatch(a, b) {
   if (!a || !b) return false;
   return String(a).toUpperCase() === String(b).toUpperCase();
@@ -249,6 +255,11 @@ function buildGraphicsJS(collectionName, mapKey, filter) {
   `;
 }
 
+// `timeframe` param is unwired in the main path — chart.setResolution is not
+// invoked because the MCP tool layer does not expose it (no use case to date).
+// Kept in the signature so the future fallback adapter (CCXT / Yahoo) can
+// honour it without a signature change. Passed through to the fallback stub
+// today; will become live when src/fallback/adapter.js wires real data sources.
 export async function getOhlcv({ count, summary, symbol, timeframe } = {}) {
   if (isFallbackActive()) {
     return fallback.getOhlcv({ count, summary, symbol, timeframe });

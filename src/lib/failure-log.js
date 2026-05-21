@@ -84,12 +84,21 @@ function safeSerialiseArgs(args) {
 
 /**
  * Record a tool failure. Non-throwing: log itself never crashes the server.
+ *
  * @param {object} entry
  * @param {string} entry.tool — MCP tool name (e.g. "quote_get")
  * @param {object} [entry.args] — tool input args (will be masked)
  * @param {string} entry.error — error message
  * @param {string} [entry.stack] — error stack trace (will be trimmed)
  * @param {string} [entry.kind] — "throw" | "error_response" (default: "throw")
+ *
+ * Note on `kind`: in production MCP traffic the `wrapServer()` wrapper
+ * almost always records `"error_response"` because every tool handler in
+ * `src/tools/*.js` wraps its core call in try/catch and returns
+ * `jsonResult({success:false, error}, true)` instead of letting the
+ * exception propagate. The `"throw"` kind only fires if a handler itself
+ * throws (a handler-level bug, very rare) or if `logFailure` is called
+ * directly from a script — e.g. the standalone tests in this file.
  */
 export function logFailure({ tool, args, error, stack, kind = 'throw' }) {
   if (!ensureDir()) return;
