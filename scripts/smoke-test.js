@@ -2,7 +2,7 @@
 /**
  * Local pre-merge smoke test for tradingview-mcp.
  *
- * Runs 11 read-only assertions against the live TV Desktop session reachable
+ * Runs 14 read-only assertions against the live TV Desktop session reachable
  * via CDP. Fail-closed: any unmet assertion (status / schema / timeout)
  * returns exit code 1.
  *
@@ -15,11 +15,17 @@
  *     (or whatever CDP_PORT env points at).
  *   - A chart is loaded (any symbol; default test data adapts to it).
  *
- * Pattern derived from webull-agent-skills (defense in depth, structured
- * OperationResult assertion). Each tool is checked for:
- *   - status (no exception, completes within timeout)
- *   - payload schema (required fields present + correct types)
- *   - latency (within budget)
+ * Inspired by the webull-agent-skills observability principle: per-call
+ * fail-closed check of (status, payload schema, latency). NB this is NOT
+ * the literal webull "defense in depth" or "OperationResult" patterns —
+ * those are execution-tier (live broker orders) and don't apply to a
+ * read-only data MCP. We borrow the structured-assertion idea, not the
+ * security model.
+ *
+ * Coverage gap to remember: this script imports `src/core/*` directly, so
+ * it cannot catch tool-registration / schema bugs in `src/tools/*`. A
+ * future variant that spawns the MCP server and exercises tools through
+ * stdio would close that gap. See docs/MAINTENANCE.md backlog.
  */
 import * as health from '../src/core/health.js';
 import * as chart from '../src/core/chart.js';
