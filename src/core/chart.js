@@ -91,12 +91,30 @@ export async function manageIndicator({ action, indicator, entity_id, inputs: in
   if (action === 'add') {
     const inputArr = inputs ? Object.entries(inputs).map(([k, v]) => ({ id: k, value: v })) : [];
     const before = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
-    await evaluate(`
-      (function() {
-        var chart = ${CHART_API};
-        chart.createStudy(${safeString(indicator)}, false, false, ${JSON.stringify(inputArr)});
-      })()
-    `);
+    try {
+      await evaluate(`
+        (function() {
+          var chart = ${CHART_API};
+          chart.createStudy(${safeString(indicator)}, false, false, ${JSON.stringify(inputArr)});
+        })()
+      `);
+    } finally {
+      // Issue #142: on failed createStudy() TV's "Insert Indicator" dialog can
+      // remain open, blocking subsequent add / pine_new operations until the
+      // user restarts TV. Dispatch an Escape keystroke in the page context
+      // unconditionally so any leftover modal is dismissed before we return.
+      try {
+        await evaluate(`
+          (function() {
+            try {
+              var evt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true });
+              document.dispatchEvent(evt);
+            } catch (e) {}
+            return null;
+          })()
+        `);
+      } catch { /* ignore — best-effort cleanup */ }
+    }
     await new Promise(r => setTimeout(r, 1500));
     const after = await evaluate(`${CHART_API}.getAllStudies().map(function(s) { return s.id; })`);
     const newIds = (after || []).filter(id => !(before || []).includes(id));

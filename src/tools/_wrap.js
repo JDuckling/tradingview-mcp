@@ -48,7 +48,11 @@ export function wrapOk(toolName, coreFn) {
   };
 }
 
-function _shapePayload(toolName, raw) {
+/**
+ * Exported for unit-test coverage of the three return-shape rules. Production
+ * code should call `wrapOk()` instead; this helper is reused internally.
+ */
+export function _shapePayload(toolName, raw) {
   if (raw && typeof raw === 'object') {
     if (raw.stale_feed === true) {
       const { stale_feed: _sf, success: _s, reason, ...rest } = raw;

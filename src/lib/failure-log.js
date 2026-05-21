@@ -162,11 +162,11 @@ function safeSerialiseArgs(args) {
  *
  * Note on `kind`: in production MCP traffic the `wrapServer()` wrapper
  * almost always records `"error_response"` because every tool handler in
- * `src/tools/*.js` wraps its core call in try/catch and returns
- * `jsonResult({success:false, error}, true)` instead of letting the
- * exception propagate. The `"throw"` kind only fires if a handler itself
- * throws (a handler-level bug, very rare) or if `logFailure` is called
- * directly from a script — e.g. the standalone tests in this file.
+ * `src/tools/*.js` wraps its core call (via `wrapOk` from `src/tools/_wrap.js`)
+ * and returns an OperationResult `err(...)` instead of letting the exception
+ * propagate. The `"throw"` kind only fires if a handler itself throws (a
+ * handler-level bug, very rare) or if `logFailure` is called directly from a
+ * script — e.g. the standalone tests in this file.
  */
 export function logFailure({ tool, args, error, stack, kind = 'throw' }) {
   if (!ensureDir()) return;
@@ -217,12 +217,14 @@ export function wrapServer(server) {
           try {
             inner = JSON.parse(result?.content?.[0]?.text || '{}');
           } catch { inner = {}; }
-          // v3.0.0 uses OperationResult.detail; legacy v2.x used inner.error.
-          // Read both so partially-migrated states don't lose error text.
+          // All tool handlers emit OperationResult since v3.0.0; the v2
+          // `inner.error` fallback was removed in v3.1.x. Plain object
+          // access here — if the schema regresses, the empty-string fallback
+          // surfaces "(no detail)" so failures still log loudly.
           logFailure({
             tool: name,
             args,
-            error: inner?.detail || inner?.error || 'error_response (no detail/error field)',
+            error: inner?.detail || 'error_response (no detail)',
             kind: 'error_response',
           });
         }
