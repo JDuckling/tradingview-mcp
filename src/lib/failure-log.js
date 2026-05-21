@@ -9,8 +9,15 @@
  * instrumentation.
  *
  * Path: $TV_MCP_FAILURE_LOG (default: ~/.tradingview-mcp/failures.jsonl).
- * Format: one JSON object per line, append-only, no rotation (rotate manually
- * if file exceeds a few MB — daily rotation is a future enhancement).
+ * Format: one JSON object per line, append-only.
+ *
+ * Rotation (since v3.0.1):
+ *   - Date-based: if the current entry's UTC date differs from the file's
+ *     mtime date, rotate to `failures.YYYY-MM-DD.jsonl` (the date is the
+ *     mtime's date, i.e. the day the rotated chunk *ended*).
+ *   - Size-based: if the file exceeds MAX_LOG_BYTES (10 MB), rotate to
+ *     `failures.YYYY-MM-DD.HHMMSS.jsonl`.
+ *   - Override via env: TV_MCP_FAILURE_LOG_MAX_BYTES (numeric, bytes).
  *
  * Safety guarantees (any of these failing must NOT crash the MCP server):
  *   - Sensitive-field masking: keys matching SENSITIVE_KEY_RE in `args`
@@ -19,12 +26,13 @@
  *   - Circular references / pathologically deep nests in `args`: caught by
  *     `safeSerialiseArgs()` and replaced with a sentinel string instead of
  *     propagating a RangeError to the server.
- *   - Filesystem errors (mkdirSync / appendFileSync): caught, latched into
- *     `initFailed` so we don't spam stderr, server continues running.
+ *   - Filesystem errors (mkdirSync / appendFileSync / rotation rename):
+ *     caught, latched into `initFailed` so we don't spam stderr, server
+ *     continues running.
  */
-import { mkdirSync, appendFileSync } from 'node:fs';
+import { mkdirSync, appendFileSync, statSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, basename, extname } from 'node:path';
 
 const DEFAULT_LOG_PATH = join(homedir(), '.tradingview-mcp', 'failures.jsonl');
 const LOG_PATH = process.env.TV_MCP_FAILURE_LOG || DEFAULT_LOG_PATH;
@@ -32,6 +40,7 @@ const LOG_PATH = process.env.TV_MCP_FAILURE_LOG || DEFAULT_LOG_PATH;
 const SENSITIVE_KEY_RE = /token|secret|password|api[-_]?key|authorization|cookie/i;
 const MAX_STACK_LINES = 10;
 const MAX_ARGS_LEN = 2000;
+const MAX_LOG_BYTES = Number(process.env.TV_MCP_FAILURE_LOG_MAX_BYTES) || 10 * 1024 * 1024;
 
 let initFailed = false;
 
@@ -44,6 +53,65 @@ function ensureDir() {
     initFailed = true;
     process.stderr.write(`failure-log: cannot create dir ${dirname(LOG_PATH)}: ${e.message}\n`);
     return false;
+  }
+}
+
+/**
+ * Return ISO date (YYYY-MM-DD, UTC) for a given epoch ms or Date.
+ */
+function _isoDate(when) {
+  return new Date(when).toISOString().slice(0, 10);
+}
+
+/**
+ * Return ISO timestamp suffix (YYYY-MM-DD.HHMMSS, UTC) for filename use.
+ */
+function _isoStampSuffix(when) {
+  // YYYY-MM-DD.HHMMSS (UTC). Drops the ms and the trailing Z so the result
+  // is filesystem-safe (no colons or dots in the time part).
+  const iso = new Date(when).toISOString();  // 2026-05-21T15:18:00.000Z
+  const date = iso.slice(0, 10);              // 2026-05-21
+  const time = iso.slice(11, 19).replace(/:/g, '');  // 151800
+  return `${date}.${time}`;
+}
+
+/**
+ * Build a rotated filename for the current log path.
+ *   failures.jsonl  →  failures.<suffix>.jsonl
+ */
+function _rotatedPath(suffix) {
+  const ext = extname(LOG_PATH);
+  const base = basename(LOG_PATH, ext);
+  return join(dirname(LOG_PATH), `${base}.${suffix}${ext}`);
+}
+
+/**
+ * Rotate the current log if (a) the mtime is from a previous UTC day, or
+ * (b) the file is bigger than MAX_LOG_BYTES. Non-throwing: rotation failure
+ * is logged to stderr once and skipped so the new entry still appends to
+ * whatever file is current.
+ */
+function _maybeRotate(now) {
+  let st;
+  try {
+    st = statSync(LOG_PATH);
+  } catch (e) {
+    // File doesn't exist yet — nothing to rotate. ENOENT is the common path.
+    if (e?.code === 'ENOENT') return;
+    // Other stat errors: treat as "skip rotation, try to append anyway".
+    return;
+  }
+  const nowDate = _isoDate(now);
+  const fileDate = _isoDate(st.mtimeMs);
+  const overSize = st.size >= MAX_LOG_BYTES;
+  const overDay = fileDate !== nowDate;
+  if (!overSize && !overDay) return;
+  const suffix = overSize ? _isoStampSuffix(st.mtimeMs) : fileDate;
+  const target = _rotatedPath(suffix);
+  try {
+    renameSync(LOG_PATH, target);
+  } catch (e) {
+    process.stderr.write(`failure-log: rotation ${LOG_PATH} → ${target} failed: ${e.message}\n`);
   }
 }
 
@@ -102,8 +170,10 @@ function safeSerialiseArgs(args) {
  */
 export function logFailure({ tool, args, error, stack, kind = 'throw' }) {
   if (!ensureDir()) return;
+  const now = Date.now();
+  _maybeRotate(now);
   const entry = {
-    ts: new Date().toISOString(),
+    ts: new Date(now).toISOString(),
     tool: tool || 'unknown',
     kind,
     error: truncate(String(error || ''), 500),
