@@ -14,6 +14,7 @@ import { registerWatchlistTools } from './tools/watchlist.js';
 import { registerUiTools } from './tools/ui.js';
 import { registerPaneTools } from './tools/pane.js';
 import { registerTabTools } from './tools/tab.js';
+import { wrapServer } from './lib/failure-log.js';
 
 const server = new McpServer(
   {
@@ -68,6 +69,9 @@ CONTEXT MANAGEMENT:
 - Call chart_get_state ONCE at start, reuse entity IDs`,
   }
 );
+
+// Hook failure-log around every tool handler. Transparent to register* fns.
+wrapServer(server);
 
 // Register all tool groups
 registerHealthTools(server);
