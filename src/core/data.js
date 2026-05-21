@@ -555,6 +555,12 @@ export async function getDepth() {
 
 export async function getStudyValues() {
   if (isFallbackActive()) return fallback.getStudyValues();
+  // Upstream Issue #143 (cherry-picked from kuldeeppatel123/tradingview-mcp@08d44f5):
+  // each study entry includes `entity_id` and `inputs` summary so callers can
+  // disambiguate same-name studies (e.g. multiple EMAs at different lengths all
+  // return name="Moving Average Exponential"). The `inputs` map normalizes TV's
+  // mixed-shape input state ({id,value} objects vs bare values) to a flat
+  // {key: value} dict.
   const data = await evaluate(`
     (function() {
       var chart = window.TradingViewApi._activeChartWidgetWV.value()._chartWidget;
@@ -568,6 +574,18 @@ export async function getStudyValues() {
           var meta = s.metaInfo();
           var name = meta.description || meta.shortDescription || '';
           if (!name) continue;
+          var entity_id = null;
+          try { entity_id = s.id(); } catch(e) {}
+          var inputs = {};
+          try {
+            var pState = s.properties && s.properties().state();
+            if (pState && pState.inputs) {
+              for (var k in pState.inputs) {
+                var iv = pState.inputs[k];
+                inputs[k] = (iv && typeof iv === 'object' && 'value' in iv) ? iv.value : iv;
+              }
+            }
+          } catch(e) {}
           var values = {};
           try {
             var dwv = s.dataWindowView();
@@ -581,7 +599,7 @@ export async function getStudyValues() {
               }
             }
           } catch(e) {}
-          if (Object.keys(values).length > 0) results.push({ name: name, values: values });
+          if (Object.keys(values).length > 0) results.push({ entity_id: entity_id, name: name, inputs: inputs, values: values });
         } catch(e) {}
       }
       return results;

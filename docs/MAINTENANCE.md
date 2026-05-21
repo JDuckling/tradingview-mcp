@@ -12,6 +12,9 @@ This fork is the AlphaSignal data-MCP. Upstream is `tradesdontlie/tradingview-mc
 | #116 + #137 (drawing API broken) | alphasignal-main | `d835799` | Same DI miss in `src/core/drawing.js` — 4 functions (`listDrawings`, `getProperties`, `removeOne`, `clearAll`). Caught by ESLint baseline. |
 | #140 follow-up (2.0.1) | alphasignal-fix-incomplete | `344ce31` | MCP tool `data_get_ohlcv` schema in `src/tools/data.js` didn't actually expose the `symbol` parameter even though `core.getOhlcv` accepted one — the 2.0.0 release fixed #140 only for `quote_get` in practice. Also hardens `src/lib/failure-log.js mask()` against circular refs / deep nests (would have crashed the server). |
 | **v3.0.0 OperationResult contract** | (Phase 1-5 PRs #7 / #8 / #10 / #11 / this one) | `1bb0700` / `684798a` / `1ee10e6` / `a3e8014` | All 78 MCP tools now return a unified `{ok, status_code, detail, payload, action, trade_outcome}` shape. STATUS_CODES enum: success / validation_error / connection_error / timeout / not_supported / internal_error / stale_data / not_found / rate_limited. See `src/lib/operation-result.js`, `schemas/operation-result.json`, `tests/operation-result.test.js`, and the CHANGELOG 3.0.0 entry. Foundation for Phase 2 IBKR execution-tier `trade_outcome` extension. |
+| **v3.0.1 Phase 6 cleanup** | PR #15 | `94378ea` | `src/tools/_wrap.js` strips cosmetic `success: true` from payloads, translates legacy `success: false` and PR-#154 stale-feed sentinel into proper `err()` responses. Smoke +6 read-only assertions (20/20). MCP-stdio smoke variant added (PR #16, `ec557d4`, 14/14). |
+| **#143** (`data_get_study_values` same-name dedup) | this batch | `6c0588a` | Cherry-pick of kuldeeppatel123/tradingview-mcp@`08d44f5` (T109 pick C). Adds `entity_id` + normalized `inputs` map per study entry. Resolves the case of multiple "Moving Average Exponential" studies at different lengths all looking identical to callers. Conflict resolved against the v3.0.0 fallback guard. |
+| **#144** (`capture_screenshot` stale frame) | this batch | `141207c` | Cherry-pick of tlcreativeart-hub/tradingview-mcp@`e177b56` (upstream PR #148). Adds `wait_for_render` MCP arg + `waitForRender` core option + `waitForChartCanvasReady()` helper in `src/wait.js`. Conflict resolved against v3.0.0 wrapOk handler. |
 
 ## Local quality gates
 
@@ -104,11 +107,16 @@ Measured cost: **~13.5 s per call** in the smoke test (`quote_get(TVC:DXY)` with
 
 ## Backlog (deferred to future patches batches)
 
-- **`failure-log.js` rotation.** Manual today (see "Failure log" above). Worth implementing daily rotation + 10 MB cap when the log starts growing.
-- **Smoke-test via MCP transport, not via direct core import.** `scripts/smoke-test.js` currently imports `src/core/*` directly, so it cannot catch MCP-layer bugs like the `data_get_ohlcv` schema omission that slipped through 2.0.0 → 2.0.1. A second smoke variant that spawns the MCP server and exercises tools through stdio would close this gap.
-- **Smoke-test coverage expansion.** Currently 14 tools out of 78. Worth adding: `alert_*`, `pine_compile`, `pine_check`, `indicator_*` (add/remove round-trip), `tab_*`, `pane_*`, `batch_run`.
-- **ESLint over `tests/`.** Currently excluded — test files may carry the same DI shape bugs we fixed in `src/core/`. Tighten when convenient.
-- **CI matrix.** Node 20 only today. Bump to `[20, 22]` matrix when Node 22 becomes mainstream-default.
+- ~~**`failure-log.js` rotation.**~~ **DONE in PR #14** (`a63e904`) — date-based + size-based (10 MB default, env override `TV_MCP_FAILURE_LOG_MAX_BYTES`).
+- ~~**Smoke-test via MCP transport.**~~ **DONE in PR #16** (`ec557d4`) — `scripts/smoke-mcp.js` + `npm run smoke:mcp` (14/14).
+- ~~**Smoke-test coverage expansion.**~~ **DONE in PR #15** — core-layer smoke now 20/20; stdio smoke 14/14.
+- ~~**ESLint over `tests/`.**~~ **DONE in PR #13** (`fddd707`).
+- ~~**CI matrix.**~~ **DONE in PR #13** — matrix `[20, 22]`.
 - **PR review (solo-dev workflow).** This fork is single-maintainer R&D, so PRs are self-merged after self-review. If anyone else starts contributing, switch to required-review flow.
-- **Remaining upstream bugs in our fork:** #142 (stuck state after failed indicator add), #143 (`data_get_study_values` dedup by name — there's a community fix in upstream commit `08d44f5b` if needed), #144 (`capture_screenshot` stale frame), #164 (`watchlist_add` button-not-found). Backlog for next patches batch.
-- **OperationResult `payload.success` legacy noise.** Many `payload` blocks still carry a `success: true` field because the core functions return `{success: true, ...}` raw and we just wrap. Harmless — consumers should read `r.ok`, not `r.payload.success`. A Phase 6 cleanup could strip `success` from `core/*` return shapes to make `payload` cleaner, but that's behavioural cleanup, not contract change.
+- **Remaining upstream bugs in our fork:** #142 (stuck state after failed `chart_manage_indicator add` blocks subsequent adds — needs UI-state cleanup / reset, no upstream PR yet) and #164 (`watchlist_add` button-not-found — selector/timing issue, no upstream PR yet). Both need novel debugging rather than cherry-pick; deferred to a future patches batch. #143 and #144 are now closed (cherry-picked from community forks — see Applied patches table).
+- ~~**OperationResult `payload.success` legacy noise.**~~ **DONE in PR #15** — `wrapOk` now strips cosmetic `success: true` and translates `success: false` / stale-feed sentinel into proper `err()`. Verified via MCP-stdio smoke `FAIL_SUCCESS_NOISE` guard.
+
+## Backlog (still open)
+
+- **Upstream bugs #142 / #164.** See "Remaining upstream bugs" above — both need novel debugging.
+- **PR review (solo-dev workflow).** This fork is single-maintainer R&D, so PRs are self-merged after self-review. If anyone else starts contributing, switch to required-review flow.
