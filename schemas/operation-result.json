@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JDuckling/tradingview-mcp/schemas/operation-result.json",
+  "title": "OperationResult",
+  "description": "Unified response contract for every MCP tool in tradingview-mcp v3.0.0+. See src/lib/operation-result.js for factory functions and rationale.",
+  "type": "object",
+  "required": ["ok", "status_code", "detail", "payload", "action", "trade_outcome"],
+  "additionalProperties": false,
+  "properties": {
+    "ok": { "type": "boolean" },
+    "status_code": {
+      "type": "string",
+      "enum": [
+        "success",
+        "validation_error",
+        "connection_error",
+        "timeout",
+        "not_supported",
+        "internal_error",
+        "stale_data",
+        "not_found",
+        "rate_limited"
+      ]
+    },
+    "detail": { "type": "string" },
+    "payload": {},
+    "action": { "type": "string", "minLength": 1 },
+    "trade_outcome": { "type": ["object", "null"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } } },
+      "then": {
+        "properties": {
+          "status_code": { "const": "success" },
+          "detail": { "const": "" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "ok": { "const": false } } },
+      "then": {
+        "properties": {
+          "status_code": { "not": { "const": "success" } },
+          "detail": { "minLength": 1 }
+        }
+      }
+    }
+  ]
+}
