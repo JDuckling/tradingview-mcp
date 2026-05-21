@@ -85,23 +85,26 @@ Claude Code's MCP transport detects the broken pipe and respawns a new process f
 
 ## Performance trade-offs
 
-### `quote_get(symbol=X)` is now slow on cross-symbol calls
+### `quote_get(symbol=X)` and `data_get_ohlcv(symbol=X)` are slow on cross-symbol calls
 
-The #140 fix (cherry-pick of PR #154) makes `data.getQuote({ symbol })` correct: when `symbol !== chart.symbol()`, the wrapper calls `chart.setSymbol(X)`, waits for `mainSeries.isLoading()` to clear, reads the bars, then restores the original symbol.
+The #140 fix (cherry-pick of PR #154) makes `data.getQuote({ symbol })` and `data.getOhlcv({ symbol })` correct: when `symbol !== chart.symbol()`, the wrapper calls `chart.setSymbol(X)`, waits for `mainSeries.isLoading()` to clear, reads the bars, then restores the original symbol.
+
+> **Patched in 2.0.1:** in the 2.0.0 release, `data_get_ohlcv` did not actually expose a `symbol` parameter at the MCP layer even though `core.getOhlcv` accepted one — the MCP tool wrapper forwarded only `{ count, summary }`. From 2.0.1 onward both tools propagate `symbol` correctly.
 
 Measured cost: **~13.5 s per call** in the smoke test (`quote_get(TVC:DXY)` with chart on `BATS:MSTR`). The chart also physically switches to the requested symbol for ~10 seconds — visible to anyone watching the TV window.
 
 **Routing recommendation:**
 
 - **Cross-asset baseline (4+ symbols at once):** use `watchlist_get` against a pre-populated watchlist (e.g. `AlphaSignal Macro` with DXY/VIX/US10Y/BTC.D). Single instant call, no chart switch, no flicker.
-- **Same-symbol read:** `quote_get()` without `symbol` is a no-op wrapper — instant, unchanged from pre-fix behaviour.
-- **Ad-hoc single off-chart quote:** `quote_get(symbol=X)` works but accept the 10–15 s + UI flicker.
+- **Same-symbol read:** `quote_get()` / `data_get_ohlcv()` without `symbol` is a no-op wrapper — instant, unchanged from pre-fix behaviour.
+- **Ad-hoc single off-chart quote / bars:** `quote_get(symbol=X)` / `data_get_ohlcv(symbol=X)` works but accept the 10–15 s + UI flicker.
 - **Pair-trade leg monitoring:** add both symbols to a watchlist + `watchlist_get` once per check.
 
 ## Backlog (deferred to future patches batches)
 
 - **`failure-log.js` rotation.** Manual today (see "Failure log" above). Worth implementing daily rotation + 10 MB cap when the log starts growing.
-- **Smoke-test coverage expansion.** Currently 11 tools out of 78. Worth adding: `alert_*`, `pine_compile`, `pine_check`, `indicator_*` (add/remove round-trip), `tab_*`, `pane_*`, `batch_run`.
+- **Smoke-test via MCP transport, not via direct core import.** `scripts/smoke-test.js` currently imports `src/core/*` directly, so it cannot catch MCP-layer bugs like the `data_get_ohlcv` schema omission that slipped through 2.0.0 → 2.0.1. A second smoke variant that spawns the MCP server and exercises tools through stdio would close this gap.
+- **Smoke-test coverage expansion.** Currently 14 tools out of 78. Worth adding: `alert_*`, `pine_compile`, `pine_check`, `indicator_*` (add/remove round-trip), `tab_*`, `pane_*`, `batch_run`.
 - **ESLint over `tests/`.** Currently excluded — test files may carry the same DI shape bugs we fixed in `src/core/`. Tighten when convenient.
 - **CI matrix.** Node 20 only today. Bump to `[20, 22]` matrix when Node 22 becomes mainstream-default.
 - **PR review (solo-dev workflow).** This fork is single-maintainer R&D, so PRs are self-merged after self-review. If anyone else starts contributing, switch to required-review flow.

@@ -4,6 +4,23 @@ All notable changes to the AlphaSignal fork of `tradingview-mcp`.
 
 This fork follows [semver](https://semver.org/) loosely: major bumps when tool response shapes change or new error sentinels appear; minor when tools are added; patch for bug fixes that preserve shapes.
 
+## [2.0.1] — 2026-05-21
+
+Follow-up patch after a second critical-review pass found two real gaps in the 2.0.0 release.
+
+### Fixed
+
+- **`data_get_ohlcv` MCP schema did not expose `symbol`.** The 2.0.0 release cherry-picked PR #154 which makes `core.getOhlcv({ symbol })` correct — but the MCP tool registration in `src/tools/data.js` only forwarded `{ count, summary }`. Net effect: `data_get_ohlcv` via MCP still returned active-chart data regardless of any `symbol` requested by the caller, even though `core.getOhlcv` was capable of switching. The 2.0.0 CHANGELOG / PR description / MAINTENANCE.md all claimed the fix covered both `quote_get` and `data_get_ohlcv`; that was only half true. Schema now exposes `symbol` (optional) with a description matching `quote_get`'s — same ~10-15 s cross-symbol cost.
+- **`src/lib/failure-log.js` `mask()` could crash the MCP server** on circular references or pathologically deep objects (stack overflow inside the recursive masker, thrown *outside* the existing `try/catch` around `appendFileSync`). New `safeSerialiseArgs()` wraps both `mask()` and `JSON.stringify()` in a try/catch and falls back to a `"[failure-log: args serialisation failed: <reason>]"` sentinel so the log entry is still written and the server stays up.
+
+### Added
+
+- **Smoke-test cross-symbol assertion** for `data_get_ohlcv` (was missing — earlier smoke only exercised the no-symbol path, which is why the MCP-layer schema gap slipped through). 14/14 pass.
+
+### Known limitation surfaced
+
+- `scripts/smoke-test.js` imports `core/*` modules directly, not the MCP tool layer. It can therefore never catch tool-registration bugs like the `data_get_ohlcv` symbol omission above. Worth a future smoke variant that spawns the MCP server and exercises tools through stdio — backlog.
+
 ## [2.0.0] — 2026-05-21
 
 Aligns `package.json` version with the long-standing `src/server.js` `version: '2.0.0'` field (previously `package.json` lagged at `1.0.0`). Bumped as major because the #140 cherry-pick changes `quote_get` / `data_get_ohlcv` happy-path latency (10–15 s for cross-symbol calls vs. ~instant before) and introduces a new `{ success: false, stale_feed: true, ... }` response sentinel that callers may need to handle. See [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) for the routing recommendation.
