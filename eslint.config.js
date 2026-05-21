@@ -10,7 +10,7 @@ import globals from 'globals';
 
 export default [
   {
-    files: ['src/**/*.js', 'scripts/**/*.js'],
+    files: ['src/**/*.js', 'scripts/**/*.js', 'tests/**/*.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
@@ -34,6 +34,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/**', 'screenshots/**', 'tests/**', '*.config.js'],
+    ignores: ['node_modules/**', 'screenshots/**', '*.config.js'],
   },
 ];
