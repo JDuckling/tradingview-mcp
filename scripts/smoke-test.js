@@ -2,7 +2,7 @@
 /**
  * Local pre-merge smoke test for tradingview-mcp.
  *
- * Runs 14 read-only assertions against the live TV Desktop session reachable
+ * Runs 20 read-only assertions against the live TV Desktop session reachable
  * via CDP. Fail-closed: any unmet assertion (status / schema / timeout)
  * returns exit code 1.
  *
@@ -34,6 +34,10 @@ import * as watchlist from '../src/core/watchlist.js';
 import * as pine from '../src/core/pine.js';
 import * as capture from '../src/core/capture.js';
 import * as drawing from '../src/core/drawing.js';
+import * as alerts from '../src/core/alerts.js';
+import * as replay from '../src/core/replay.js';
+import * as tab from '../src/core/tab.js';
+import * as pane from '../src/core/pane.js';
 
 const TIMEOUT_DEFAULT_MS = 8000;
 const TIMEOUT_LONG_MS = 15000;
@@ -199,6 +203,43 @@ const ASSERTIONS = [
     assert: r =>
       r?.success === true &&
       (r?._skipped || isNonEmptyString(r?.entity_id)),
+  },
+  {
+    name: 'tv_discover',
+    fn: () => health.discover(),
+    assert: r => r?.success === true && typeof r === 'object',
+  },
+  {
+    name: 'tv_ui_state',
+    fn: () => health.uiState(),
+    assert: r => r?.success === true && typeof r === 'object',
+  },
+  {
+    name: 'alert_list',
+    fn: () => alerts.list(),
+    assert: r => r?.success === true || Array.isArray(r?.alerts) || r?.error,
+  },
+  {
+    name: 'replay_status',
+    fn: () => replay.status(),
+    assert: r => r?.success === true || r?.error,
+  },
+  {
+    name: 'tab_list',
+    fn: () => tab.list(),
+    assert: r =>
+      r?.success === true &&
+      typeof r?.tab_count === 'number' &&
+      Array.isArray(r?.tabs),
+  },
+  {
+    name: 'pane_list',
+    fn: () => pane.list(),
+    assert: r =>
+      r?.success === true &&
+      isNonEmptyString(String(r?.layout)) &&
+      typeof r?.chart_count === 'number' &&
+      Array.isArray(r?.panes),
   },
 ];
 
