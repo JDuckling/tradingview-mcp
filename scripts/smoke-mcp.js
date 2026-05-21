@@ -80,6 +80,11 @@ const TOOL_CALLS = [
   { name: 'data_get_indicator', args: { entity_id: 'forced_not_found_xyz_smoke_stdio' },
     expectErr: 'not_found',
     note: 'forced NOT_FOUND classifier (verifies err lane)' },
+  { name: 'capture_screenshot', args: { region: 'chart', wait_for_render: true },
+    expect: p => typeof p?.file_path === 'string' && p.file_path.length > 0
+                 && Number.isFinite(p?.size_bytes) && p.size_bytes > 0
+                 && p?.waited_for_render === true,
+    note: '#144 fix: wait_for_render true-path produces non-stale frame' },
 ];
 
 const TIMEOUT_MS = 30000;

@@ -62,6 +62,16 @@ Decision tree per upstream commit:
 
 Always re-run `npm run lint && npm run test:unit && npm run smoke` after a sync.
 
+## Merging PRs (gh CLI gotcha)
+
+`gh pr merge --repo X` without an explicit PR number prints help and **silently does nothing** — no error code, no failure message. Hit this in real workflow once (PR #9 was closed unmerged because the merge command no-op'd, then `git branch -d` and remote delete left the commit orphaned). Always pass the PR number explicitly:
+
+```bash
+gh pr merge <N> --repo JDuckling/tradingview-mcp --merge
+```
+
+The local `git branch -d <name>` only complains about merge state against `origin/<name>`, not against `main` — it deletes the branch if upstream tracks it, even if `main` doesn't have the commits. Safer flow: only delete the local branch after `gh pr view <N>` reports `state: MERGED`.
+
 ## Rollback
 
 If a sync or a new patch breaks live use, revert in our `main` directly:
