@@ -640,7 +640,7 @@ export async function getPineTables({ study_filter } = {}) {
       if (!tables[tid][v.row]) tables[tid][v.row] = {};
       tables[tid][v.row][v.col] = v.t || '';
     }
-    const tableList = Object.entries(tables).map(([tid, rows]) => {
+    const tableList = Object.entries(tables).map(([_tid, rows]) => {
       const rowNums = Object.keys(rows).map(Number).sort((a, b) => a - b);
       const formatted = rowNums.map(rn => {
         const cols = rows[rn];
