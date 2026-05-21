@@ -97,13 +97,17 @@ export async function ensurePineEditorOpen() {
   // Path 3: Alt+E keyboard shortcut (TV documented Pine Editor toggle).
   // Needs CDP-level Input.dispatchKeyEvent — a synthetic page KeyboardEvent
   // doesn't trigger TV's hotkey handlers.
+  // CDP modifier bitmask: 1=Alt, 2=Ctrl, 4=Meta, 8=Shift. Previous version of
+  // this code had modifiers=8 (sent Shift+E silently — wrong key combo,
+  // hotkey never fired). The Pine Editor still opened during initial verify
+  // because Path 2 selector chain caught it; Path 3 was actually broken.
   try {
     const client = await getClient();
     await client.Input.dispatchKeyEvent({
-      type: 'keyDown', key: 'e', code: 'KeyE', modifiers: 8,  // 8 = Alt
+      type: 'keyDown', key: 'e', code: 'KeyE', modifiers: 1,
     });
     await client.Input.dispatchKeyEvent({
-      type: 'keyUp', key: 'e', code: 'KeyE', modifiers: 8,
+      type: 'keyUp', key: 'e', code: 'KeyE', modifiers: 1,
     });
   } catch { /* best-effort */ }
 

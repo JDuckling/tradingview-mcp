@@ -15,6 +15,9 @@ This fork is the AlphaSignal data-MCP. Upstream is `tradesdontlie/tradingview-mc
 | **v3.0.1 Phase 6 cleanup** | PR #15 | `94378ea` | `src/tools/_wrap.js` strips cosmetic `success: true` from payloads, translates legacy `success: false` and PR-#154 stale-feed sentinel into proper `err()` responses. Smoke +6 read-only assertions (20/20). MCP-stdio smoke variant added (PR #16, `ec557d4`, 14/14). |
 | **#143** (`data_get_study_values` same-name dedup) | this batch | `6c0588a` | Cherry-pick of kuldeeppatel123/tradingview-mcp@`08d44f5` (T109 pick C). Adds `entity_id` + normalized `inputs` map per study entry. Resolves the case of multiple "Moving Average Exponential" studies at different lengths all looking identical to callers. Conflict resolved against the v3.0.0 fallback guard. |
 | **#144** (`capture_screenshot` stale frame) | this batch | `141207c` | Cherry-pick of tlcreativeart-hub/tradingview-mcp@`e177b56` (upstream PR #148). Adds `wait_for_render` MCP arg + `waitForRender` core option + `waitForChartCanvasReady()` helper in `src/wait.js`. Conflict resolved against v3.0.0 wrapOk handler. |
+| **#142** (stuck state after failed indicator add) | PR #19 | `6a70e70` | `manageIndicator(action="add")` wraps `createStudy()` in try/finally + dispatches Escape KeyboardEvent on every exit so leftover "Insert Indicator" modal doesn't block subsequent adds. Verified live: forced-fail add → MACD add succeeds. |
+| **#164** (`watchlist_add` button not found) | PR #19 | `6a70e70` | TV 3.1.0 removed the historical `[data-name="base-watchlist-widget-button"]`. Rewrite skips the toggle check, expands the add-button selector chain (`[data-name="watchlist-add-symbol-button"]` for 3.1.x), adds DOM-walk + last-resort "+" button fallback. Payload now reports `selector_used` for drift diagnosis. Verified live: NVDA added (count 11→12). |
+| Pine Editor selector drift | PR #20 + this PR | `985aec5` / `8b1b35c` | `ensurePineEditorOpen()` selector chain expanded with TV 3.1.0 names + RU locale, bottom-widget-bar tab fallback, CDP Alt+E hotkey path. **Modifier bug fix in 3.1.1**: initial Alt+E used `modifiers: 8` (= Shift per CDP spec, not Alt). Now `modifiers: 1` with inline comment documenting the bitmask. Verified live: `pine_new(indicator)` opens Monaco + injects template. |
 
 ## Local quality gates
 
@@ -128,5 +131,8 @@ Measured cost: **~13.5 s per call** in the smoke test (`quote_get(TVC:DXY)` with
 
 ## Backlog (still open)
 
-- **Upstream bugs #142 / #164.** See "Remaining upstream bugs" above — both need novel debugging.
+- ~~**Upstream bugs #142 / #164.**~~ **DONE in PR #19** — both fixed with selector / modal-cleanup rewrites, verified live. See Applied patches table.
 - **PR review (solo-dev workflow).** This fork is single-maintainer R&D, so PRs are self-merged after self-review. If anyone else starts contributing, switch to required-review flow.
+- **`pine_new` / `pine_open` / `pine_save` smoke-mcp coverage.** The Pine Editor open path is now patched, but smoke-mcp has no pine_new assertion yet — selector drift could recur unnoticed. Worth a side-effect-free pine_new test (delete the script via `pine_save` cleanup after).
+- **`pine_open` / `pine_save` selector audit.** Likely same TV 3.1.0 drift class as `pine_new` (PR #20). Not yet verified.
+- **Wider locale handling in selectors.** RU locale aria-label added for Pine; same approach could harden watchlist_add / indicator search dialogs (other locales: DE, ES, ZH, etc.).

@@ -4,6 +4,72 @@ All notable changes to the AlphaSignal fork of `tradingview-mcp`.
 
 This fork follows [semver](https://semver.org/) loosely: major bumps when tool response shapes change or new error sentinels appear; minor when tools are added; patch for bug fixes that preserve shapes.
 
+## [3.1.1] — 2026-05-21
+
+Three follow-up PRs after 3.1.0. All bug fixes / cleanup, no contract changes.
+
+### Fixed
+
+- **#142** (stuck state after failed `chart_manage_indicator add`, PR #19,
+  commit `6a70e70`) — `manageIndicator(action="add")` wraps `createStudy()`
+  in try/finally and dispatches an Escape KeyboardEvent on every exit path.
+  TV's "Insert Indicator" dialog was being left open on failed add,
+  blocking subsequent add + pine_new calls until TV restart. Verified live:
+  forced-fail add → MACD add now succeeds (previously blocked).
+- **#164** (`watchlist_add` "Watchlist button not found", PR #19) — the
+  legacy `[data-name="base-watchlist-widget-button"]` selector was removed
+  in TV 3.1.0 and the old code threw before ever attempting the add.
+  Rewrite: skip the toggle check entirely (if `watchlist_get` works, the
+  panel is reachable), broader add-button selector list (incl.
+  `[data-name="watchlist-add-symbol-button"]` for TV 3.1.x), DOM-walk
+  fallback that scans right-panel buttons for aria-label / title /
+  textContent matches, last-resort "+" button in upper-right quadrant.
+  Payload now reports `selector_used` for future drift diagnosis.
+  Verified live: NASDAQ:NVDA added (watchlist count 11 → 12).
+- **Pine Editor `pine_new` selector drift** (PR #20, commit `985aec5`)
+  — surfaced through #142 live verification; same root cause as #164.
+  `ensurePineEditorOpen()` selector chain expanded
+  (`[data-name="pine-editor-button"]` + aria-label / title / class
+  variants incl. RU locale), bottom-widget-bar tab fallback, CDP-level
+  Alt+E hotkey path. Verified live: `pine_new(indicator)` now opens
+  Monaco and injects template.
+- **Pine Editor Alt+E CDP modifier bug** (this PR) — initial Alt+E
+  fallback used `modifiers: 8` which is **Shift** per CDP spec, not Alt
+  (Alt = 1). Hotkey path was silently broken; Pine Editor only opened
+  via the selector chain. Now corrected to `modifiers: 1`. Inline
+  comment added documenting the CDP modifier bitmask
+  (1=Alt, 2=Ctrl, 4=Meta, 8=Shift) to prevent recurrence.
+
+### Cleanup
+
+- **`wrapServer` dead fallback** (PR #19) — removed `inner.error` legacy
+  v2 fallback from the failure-log error extraction. Since the v3.0.0
+  hard break (PR #11) every tool handler emits `inner.detail`; the
+  fallback was load-bearing only during the migration window.
+- **Git orphan objects** (PR #19) — `git gc --prune=now --aggressive`
+  cleaned ~10 unreachable trees/commits/blobs from PR #9 abandoned
+  branch and the kuldeeppatel123 / tlcreativeart-hub cherry-pick
+  fetches. `git fsck --unreachable` now empty.
+
+### Added
+
+- **`_shapePayload` unit tests** (PR #19, +11 tests in
+  `tests/wrap.test.js`) — covers the three Phase 6 return-shape rules
+  (stale_feed sentinel → STALE_DATA, success: false → INTERNAL_ERROR,
+  success: true → strip) without needing live TV / frozen WS. Plus
+  defensive cases (null, array, primitive, branch ordering). `_shapePayload`
+  exported from `src/tools/_wrap.js` for test access. test:unit total
+  54 → 65.
+- **`wait_for_render` true-path in `smoke-mcp`** (PR #19) — added
+  assertion that calls `capture_screenshot({region:'chart',
+  wait_for_render: true})` and checks `payload.waited_for_render === true`.
+  smoke:mcp 14/14 → 15/15.
+- **`docs/MAINTENANCE.md` "Merging PRs (gh CLI gotcha)"** (PR #19) —
+  codifies the rule that `gh pr merge <N> --repo X` must always include
+  the PR number explicitly. The no-arg form prints help and silently
+  no-ops; combined with `git branch -d`, this is how PR #9 was
+  orphaned and recovered via cherry-pick into PR #10.
+
 ## [3.1.0] — 2026-05-21
 
 Five additive PRs after the 3.0.0 contract refactor. No breaking changes
