@@ -4,6 +4,58 @@ All notable changes to the AlphaSignal fork of `tradingview-mcp`.
 
 This fork follows [semver](https://semver.org/) loosely: major bumps when tool response shapes change or new error sentinels appear; minor when tools are added; patch for bug fixes that preserve shapes.
 
+## [3.0.0] — 2026-05-21
+
+**Breaking change:** every MCP tool now returns a unified `OperationResult` shape instead of the previous per-tool `{success, error}` / raw payload mix. Consumers (Claude Code system.md, third-party clients) MUST update their response parsing. See `src/lib/operation-result.js` for the contract and the migration plan in `plans/2026-06-01-mcp-operation-result-contract.md`.
+
+### Contract
+
+```
+{
+  ok: boolean,              // true on success
+  status_code: string,      // enum: success / validation_error / connection_error / timeout /
+                            //       not_supported / internal_error / stale_data / not_found / rate_limited
+  detail: string,           // human-readable; non-empty when ok=false
+  payload: any,             // tool-specific data on success; null on failure (or partial data, e.g. stale-feed sentinel)
+  action: string,           // MCP tool name
+  trade_outcome: object|null  // reserved for Phase 2 IBKR execution-tier tools; always null in this release
+}
+```
+
+The contract is adapted from webull-agent-skills' execution-tier `OperationResult` pattern so that Phase 2 IBKR can extend it (`trade_outcome`) without re-shaping the data tier.
+
+### Added
+
+- **`src/lib/operation-result.js`** (commit `1bb0700`) — factory functions `ok()` / `err()`, enum `STATUS_CODES`, predicate `isOperationResult()`. Strict validation: unknown status_codes throw, empty detail throws, status_code='success' to `err()` throws.
+- **`schemas/operation-result.json`** — JSON Schema draft 2020-12. Used by smoke-test + unit tests via `ajv` (devDependency). Production code stays validation-free (hybrid validation strategy).
+- **`tests/operation-result.test.js`** — 20 unit tests covering factory happy paths, factory rejection paths, schema validation. `test:unit` now runs 49 tests total.
+- **`src/tools/_wrap.js`** (commit `684798a`) — `wrapOk(toolName, coreFn)` helper that collapses the trivial try/catch around a core call. `okResponse` / `errResponse` for tools with custom error classification. `classifyError(message)` heuristic mapper (available but used sparingly; per-tool inline mapping reads cleaner).
+
+### Migrated (all 78 tools)
+
+Three category PRs:
+- **Cat 1 (24 tools, commit `684798a`)**: chart + data + watchlist + symbol.
+  - `data_get_indicator`: 'Study not found' → `NOT_FOUND`.
+  - `depth_get`: missing DOM panel → `NOT_SUPPORTED`; legacy `hint` preserved in `payload`.
+  - `watchlist_add`: upstream #164 'Watchlist button not found' → `NOT_SUPPORTED`; Escape-key UI recovery preserved.
+- **Cat 2 (29 tools, commit `1ee10e6`)**: drawing + pine + ui.
+  - `draw_remove_one` / `draw_get_properties`: 'Shape not found' → `NOT_FOUND`.
+  - `pine_open`: 'not found' / 'no such' → `NOT_FOUND`; legacy `source: 'internal_api'` preserved in `payload`.
+- **Cat 3 (25 tools, commit `a3e8014`)**: health + replay + alerts + batch + capture + indicators + pane + tab.
+  - `tv_health_check`: failure → `CONNECTION_ERROR`; launch hint preserved in `payload`.
+  - `indicator_set_inputs` / `indicator_toggle_visibility`: 'Study not found' → `NOT_FOUND`.
+
+Everything else uses the `wrapOk` default (any throw → `INTERNAL_ERROR`).
+
+### Changed
+
+- **`src/lib/failure-log.js`** `wrapServer()` now reads `inner.detail` (v3.0.0 OperationResult field) with `inner.error` as a v2 legacy fallback so partially-migrated states don't lose log text.
+
+### Known transitional behaviour
+
+- **`payload` may still contain a legacy `success: true` field** for tools where the core function returns `{success: true, ...}`. Harmless noise — consumers should read `r.ok`, not `r.payload.success`. A future Phase 6 could strip `success` from core return shapes, but that's a behavioural cleanup, not a contract change.
+- **Smoke test** still imports core/* directly so it can't catch tool-registration bugs (e.g. a schema/param mismatch). Documented in `docs/MAINTENANCE.md` backlog: a future smoke variant should spawn the MCP server and exercise tools through stdio.
+
 ## [2.0.1] — 2026-05-21
 
 Follow-up patch after a second critical-review pass found two real gaps in the 2.0.0 release.

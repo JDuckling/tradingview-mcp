@@ -11,12 +11,13 @@ This fork is the AlphaSignal data-MCP. Upstream is `tradesdontlie/tradingview-mc
 | #171 (`evaluate is not defined`) | alphasignal-main | `06668f6` | DI miss in `src/core/chart.js` — 3 functions (`getVisibleRange`, `scrollToDate`, `symbolInfo`) didn't take `_deps` / call `_resolve`. |
 | #116 + #137 (drawing API broken) | alphasignal-main | `d835799` | Same DI miss in `src/core/drawing.js` — 4 functions (`listDrawings`, `getProperties`, `removeOne`, `clearAll`). Caught by ESLint baseline. |
 | #140 follow-up (2.0.1) | alphasignal-fix-incomplete | `344ce31` | MCP tool `data_get_ohlcv` schema in `src/tools/data.js` didn't actually expose the `symbol` parameter even though `core.getOhlcv` accepted one — the 2.0.0 release fixed #140 only for `quote_get` in practice. Also hardens `src/lib/failure-log.js mask()` against circular refs / deep nests (would have crashed the server). |
+| **v3.0.0 OperationResult contract** | (Phase 1-5 PRs #7 / #8 / #10 / #11 / this one) | `1bb0700` / `684798a` / `1ee10e6` / `a3e8014` | All 78 MCP tools now return a unified `{ok, status_code, detail, payload, action, trade_outcome}` shape. STATUS_CODES enum: success / validation_error / connection_error / timeout / not_supported / internal_error / stale_data / not_found / rate_limited. See `src/lib/operation-result.js`, `schemas/operation-result.json`, `tests/operation-result.test.js`, and the CHANGELOG 3.0.0 entry. Foundation for Phase 2 IBKR execution-tier `trade_outcome` extension. |
 
 ## Local quality gates
 
 `npm run lint` — ESLint flat config (`eslint.config.js`). `no-undef: error` is the rule that caught #116/#137 and is the regression class CI blocks. Exits 0.
 
-`npm run test:unit` — node:test runner over `pine_analyze.test.js` + `cli.test.js`. 29 tests, no TV required.
+`npm run test:unit` — node:test runner over `pine_analyze.test.js` + `cli.test.js` + `operation-result.test.js`. 49 tests, no TV required. The 20 `operation-result` tests use Ajv 2020 (`ajv/dist/2020.js`) to validate the OperationResult JSON Schema.
 
 `npm run smoke` — `scripts/smoke-test.js`. 14 structured assertions (status / schema / latency) against the live TV Desktop session. Includes explicit regression guards for #140 on both `quote_get` and `data_get_ohlcv` paths, all three #171-fixed functions, and the #116/#137 drawing API. Requires TV running with `--remote-debugging-port=9222`. Use this before merging to `main`.
 
@@ -110,3 +111,4 @@ Measured cost: **~13.5 s per call** in the smoke test (`quote_get(TVC:DXY)` with
 - **CI matrix.** Node 20 only today. Bump to `[20, 22]` matrix when Node 22 becomes mainstream-default.
 - **PR review (solo-dev workflow).** This fork is single-maintainer R&D, so PRs are self-merged after self-review. If anyone else starts contributing, switch to required-review flow.
 - **Remaining upstream bugs in our fork:** #142 (stuck state after failed indicator add), #143 (`data_get_study_values` dedup by name — there's a community fix in upstream commit `08d44f5b` if needed), #144 (`capture_screenshot` stale frame), #164 (`watchlist_add` button-not-found). Backlog for next patches batch.
+- **OperationResult `payload.success` legacy noise.** Many `payload` blocks still carry a `success: true` field because the core functions return `{success: true, ...}` raw and we just wrap. Harmless — consumers should read `r.ok`, not `r.payload.success`. A Phase 6 cleanup could strip `success` from `core/*` return shapes to make `payload` cleaner, but that's behavioural cleanup, not contract change.
