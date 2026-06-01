@@ -1,44 +1,106 @@
 /**
  * Core alert logic.
  */
-import { evaluate, evaluateAsync, getClient, safeString } from '../connection.js';
+import { evaluate, evaluateAsync, safeString, requireFinite } from '../connection.js';
+
+// Map a user-facing condition string to a TradingView price-alert condition type.
+// Verified live 2026-06-01: cross / greater / less all accepted by create_alert.
+function mapCondition(condition) {
+  const c = String(condition || '').toLowerCase().replace(/[\s-]/g, '_');
+  if (/^(greater|greater_than|above|gt)$/.test(c)) return 'greater';
+  if (/^(less|less_than|below|lt)$/.test(c)) return 'less';
+  if (/cross_up|crossing_up/.test(c)) return 'cross_up';
+  if (/cross_down|crossing_down/.test(c)) return 'cross_down';
+  return 'cross'; // crossing / default
+}
 
 export async function create({ condition, price, message }) {
-  const opened = await evaluate(`
-    (function() {
-      var btn = document.querySelector('[aria-label="Create Alert"]')
-        || document.querySelector('[data-name="alerts"]');
-      if (btn) { btn.click(); return true; }
-      return false;
+  const p = requireFinite(price, 'price');
+  const condType = mapCondition(condition);
+
+  // --- Primary path: REST create_alert in the page main world (same origin +
+  // credentials as TradingView's own alert dialog), mirroring core.list().
+  // CRITICAL: no Content-Type header. application/json triggers a CORS preflight
+  // (OPTIONS) that pricealerts.tradingview.com rejects -> "Failed to fetch". A
+  // "simple" request (default text/plain) is accepted; the server parses the JSON
+  // body regardless. Verified live 2026-06-01 (cross/greater/less all -> s:ok).
+  const rest = await evaluateAsync(`
+    (async function(){
+      try {
+        var c = window.TradingViewApi.activeChart();
+        var resolution = c.resolution() || '1D';
+        var pro = null, currency = null;
+        try { var ext = c.symbolExt(); pro = ext.pro_name || ext.full_name; } catch(e){}
+        try {
+          var w = window.TradingViewApi._activeChartWidgetWV.value();
+          var si = w._chartWidget.model().mainSeries().symbolInfo();
+          if (si) { pro = si.pro_name || si.full_name || pro; currency = si.currency_code; }
+        } catch(e){}
+        if (!pro) return { ok:false, error:'could not resolve chart symbol' };
+        var symObj = { symbol: pro };
+        if (currency) { symObj['adjustment'] = 'splits'; symObj['currency-id'] = currency; }
+        var price = ${p};
+        var condType = ${safeString(condType)};
+        var msg = ${safeString(message || '')} || (pro + ' ' + condType + ' ' + price);
+        var body = { payload: {
+          symbol: '=' + JSON.stringify(symObj),
+          resolution: resolution,
+          message: msg,
+          sound_file: null, sound_duration: 0, popup: true,
+          expiration: new Date(Date.now() + 30*86400000).toISOString(),
+          auto_deactivate: true, email: false, sms_over_email: false,
+          mobile_push: true, web_hook: null, name: null,
+          conditions: [{ type: condType, frequency: 'on_first_fire',
+            series: [{ type:'barset' }, { type:'value', value: price }], resolution: resolution }],
+          active: true, ignore_warnings: true
+        }};
+        var r = await fetch('https://pricealerts.tradingview.com/create_alert', {
+          method: 'POST', credentials: 'include', body: JSON.stringify(body) });
+        var j = await r.json();
+        var alertId = j && j.r && j.r.alert_id;
+        return { ok: (r.status === 200 && j && j.s === 'ok'), status: r.status,
+                 alert_id: alertId || null, symbol: pro, errmsg: (j && j.errmsg) || null };
+      } catch(e){ return { ok:false, error: e.message }; }
     })()
   `);
 
-  if (!opened) {
-    const client = await getClient();
-    await client.Input.dispatchKeyEvent({ type: 'keyDown', modifiers: 1, key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65 });
-    await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'a', code: 'KeyA' });
+  if (rest && rest.ok) {
+    return { success: true, alert_id: rest.alert_id, symbol: rest.symbol,
+             price: p, condition: condType, message: message || '(auto)', source: 'rest_api' };
   }
 
-  await new Promise(r => setTimeout(r, 1000));
+  // --- Fallback path: DOM dialog with locale-independent selectors. Best-effort
+  // (kept so the tool degrades gracefully if the private REST shape ever changes).
+  const restErr = (rest && (rest.error || rest.errmsg)) || 'rest path returned not-ok';
+  await evaluate(`
+    (function(){
+      var open = document.querySelector('[data-name="set-alert-button"]')
+        || document.querySelector('[aria-label="Create Alert"]')
+        || document.querySelector('[aria-label="Создать оповещение"]');
+      if (open) { open.click(); return true; }
+      var panel = document.querySelector('[data-name="alerts"]');   // open side panel, then retry
+      if (panel) { panel.click(); }
+      return false;
+    })()
+  `);
+  await new Promise(r => setTimeout(r, 800));
+  await evaluate(`
+    (function(){ var b=document.querySelector('[data-name="set-alert-button"]'); if(b){ b.click(); return true; } return false; })()
+  `);
+  await new Promise(r => setTimeout(r, 800));
 
   const priceSet = await evaluate(`
-    (function() {
-      var inputs = document.querySelectorAll('[class*="alert"] input[type="text"], [class*="alert"] input[type="number"]');
-      for (var i = 0; i < inputs.length; i++) {
-        var label = inputs[i].closest('[class*="row"]')?.querySelector('[class*="label"]');
-        if (label && /value|price/i.test(label.textContent)) {
+    (function(){
+      var inputs = document.querySelectorAll('input[type="text"], input[inputmode="decimal"], input[inputmode="numeric"]');
+      for (var i=0;i<inputs.length;i++){
+        var inp = inputs[i]; var r = inp.getBoundingClientRect();
+        if (r.width>0 && r.height>0 && /^[\\d\\s.,]*$/.test(inp.value)) {
           var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-          nativeSet.call(inputs[i], ${safeString(String(price))});
-          inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
-          inputs[i].dispatchEvent(new Event('change', { bubbles: true }));
+          nativeSet.call(inp, ${safeString(String(p))});
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
           return true;
         }
-      }
-      if (inputs.length > 0) {
-        var nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        nativeSet.call(inputs[0], ${safeString(String(price))});
-        inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-        return true;
       }
       return false;
     })()
@@ -46,30 +108,25 @@ export async function create({ condition, price, message }) {
 
   if (message) {
     await evaluate(`
-      (function() {
-        var textarea = document.querySelector('[class*="alert"] textarea')
-          || document.querySelector('textarea[placeholder*="message"]');
-        if (textarea) {
-          var nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-          nativeSet.call(textarea, ${JSON.stringify(message)});
-          textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        }
+      (function(){
+        var ta = document.querySelector('textarea');
+        if (ta) { var s = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+          s.call(ta, ${JSON.stringify(message)}); ta.dispatchEvent(new Event('input', { bubbles: true })); }
       })()
     `);
   }
-
-  await new Promise(r => setTimeout(r, 500));
+  await new Promise(r => setTimeout(r, 400));
   const created = await evaluate(`
-    (function() {
-      var btns = document.querySelectorAll('button[data-name="submit"], button');
-      for (var i = 0; i < btns.length; i++) {
-        if (/^create$/i.test(btns[i].textContent.trim())) { btns[i].click(); return true; }
-      }
+    (function(){
+      var btns = document.querySelectorAll('button');
+      for (var i=0;i<btns.length;i++){ var t=(btns[i].textContent||'').trim();
+        if (/^(Create|Создать)$/.test(t)) { btns[i].click(); return true; } }
       return false;
     })()
   `);
 
-  return { success: !!created, price, condition, message: message || '(none)', price_set: !!priceSet, source: 'dom_fallback' };
+  return { success: !!created, price: p, condition: condType, message: message || '(none)',
+           price_set: !!priceSet, source: 'dom_fallback', rest_error: restErr };
 }
 
 export async function list() {
