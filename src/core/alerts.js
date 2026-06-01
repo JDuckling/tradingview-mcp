@@ -160,21 +160,61 @@ export async function list() {
   return { success: true, alert_count: result?.alerts?.length || 0, source: 'internal_api', alerts: result?.alerts || [], error: result?.error };
 }
 
-export async function deleteAlerts({ delete_all }) {
-  if (delete_all) {
-    const result = await evaluate(`
-      (function() {
-        var alertBtn = document.querySelector('[data-name="alerts"]');
-        if (alertBtn) alertBtn.click();
-        var header = document.querySelector('[data-name="alerts"]');
-        if (header) {
-          header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 100 }));
-          return { context_menu_opened: true };
-        }
-        return { context_menu_opened: false };
-      })()
-    `);
-    return { success: true, note: 'Alert deletion requires manual confirmation in the context menu.', context_menu_opened: result?.context_menu_opened || false, source: 'dom_fallback' };
+export async function deleteAlerts({ delete_all, alert_id } = {}) {
+  // Resolve the target ids. An explicit alert_id (scalar or array) wins; with
+  // delete_all we list() first and bulk-delete every id. Either way the same
+  // REST endpoint runs once — the bulk endpoint accepts an array.
+  const byId = alert_id !== undefined && alert_id !== null;
+  let alertIds;
+  if (byId) {
+    alertIds = Array.isArray(alert_id) ? alert_id : [alert_id];
+  } else if (delete_all) {
+    const listed = await list();
+    if (listed.error) {
+      return { success: false, error: `could not list alerts to delete: ${listed.error}`, source: 'rest_api' };
+    }
+    alertIds = (listed.alerts || []).map(a => a.alert_id);
+  } else {
+    throw new Error('deleteAlerts requires alert_id or delete_all: true');
   }
-  throw new Error('Individual alert deletion not yet supported. Use delete_all: true.');
+
+  // Alert ids are numeric in TradingView's system; coerce + drop junk so the
+  // interpolated array literal below is values-only (no injection surface).
+  alertIds = alertIds.filter(id => Number.isFinite(Number(id))).map(id => Number(id));
+
+  if (alertIds.length === 0) {
+    if (delete_all && !byId) {
+      return { success: true, deleted_count: 0, alert_ids: [], delete_all: true,
+               source: 'rest_api', note: 'no active alerts to delete' };
+    }
+    throw new Error('deleteAlerts: no valid alert_id to delete');
+  }
+
+  // --- REST delete_alerts in the page main world (same origin + credentials as
+  // TradingView's own alerts panel), mirroring core.create / core.list.
+  // CRITICAL: no Content-Type header. application/json triggers a CORS preflight
+  // (OPTIONS) that pricealerts.tradingview.com rejects -> "Failed to fetch"; a
+  // "simple" request (default text/plain) is accepted and the server parses the
+  // JSON body. Verified live 2026-06-01: { payload: { alert_ids: [...] } } -> s:ok;
+  // { alert_ids } / { ids } shapes and /delete_alert,/remove_alert endpoints fail.
+  const rest = await evaluateAsync(`
+    (async function(){
+      try {
+        var body = { payload: { alert_ids: ${JSON.stringify(alertIds)} } };
+        var r = await fetch('https://pricealerts.tradingview.com/delete_alerts', {
+          method: 'POST', credentials: 'include', body: JSON.stringify(body) });
+        var j = await r.json();
+        return { ok: (r.status === 200 && j && j.s === 'ok'), status: r.status,
+                 errmsg: (j && j.errmsg) || null };
+      } catch(e){ return { ok:false, error: e.message }; }
+    })()
+  `);
+
+  if (rest && rest.ok) {
+    return { success: true, deleted_count: alertIds.length, alert_ids: alertIds,
+             delete_all: !!delete_all, source: 'rest_api' };
+  }
+  return { success: false, alert_ids: alertIds, status: rest && rest.status,
+           error: (rest && (rest.error || rest.errmsg)) || 'delete_alerts returned not-ok',
+           source: 'rest_api' };
 }
