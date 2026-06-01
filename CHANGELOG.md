@@ -4,6 +4,31 @@ All notable changes to the AlphaSignal fork of `tradingview-mcp`.
 
 This fork follows [semver](https://semver.org/) loosely: major bumps when tool response shapes change or new error sentinels appear; minor when tools are added; patch for bug fixes that preserve shapes.
 
+## [3.1.2] — 2026-06-01
+
+Bug fix, no contract changes (response shapes preserved).
+
+### Fixed
+
+- **`alert_create` selector drift + locale failure** (commit `c4e7aa7`) —
+  `alert_create` consistently failed (`price_set:false`, `source:dom_fallback`):
+  the open selector `[aria-label="Create Alert"]` does not exist on a
+  Russian-locale UI («Создать оповещение»), so the code fell through to
+  `[data-name="alerts"]`, which opens the alerts side panel rather than the
+  create dialog — the price field was never found. Rewrote `core.create` onto
+  the same REST path `alert_list` already uses
+  (`pricealerts.tradingview.com/create_alert` via main-world `evaluateAsync`).
+  **Critical:** the POST sends **no `Content-Type` header** — `application/json`
+  triggers a CORS preflight that pricealerts rejects (`Failed to fetch`); a
+  "simple" request is accepted (the server parses the JSON body regardless).
+  The symbol object is built from the chart model (`pro_name` + `currency_code`);
+  condition mapping crossing→`cross` / greater_than→`greater` /
+  less_than→`less` (all verified live). DOM fallback retained on
+  locale-independent selectors (`[data-name="set-alert-button"]`, submit matched
+  by `/^(Create|Создать)$/`). Success now returns `source:'rest_api'` with the
+  resolved `alert_id`. Verified live: VTBR@77.7 + PHOR@6150 created and confirmed
+  via `alert_list`.
+
 ## [3.1.1] — 2026-05-21
 
 Three follow-up PRs after 3.1.0. All bug fixes / cleanup, no contract changes.
