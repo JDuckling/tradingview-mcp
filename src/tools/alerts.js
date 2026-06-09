@@ -7,7 +7,8 @@ export function registerAlertTools(server) {
     condition: z.string().describe('Alert condition (e.g., "crossing", "greater_than", "less_than")'),
     price: z.coerce.number().describe('Price level for the alert'),
     message: z.string().optional().describe('Alert message'),
-  }, wrapOk('alert_create', ({ condition, price, message }) => core.create({ condition, price, message })));
+    symbol: z.string().optional().describe('Symbol to alert on (e.g. "MOEX:VTBR"); default = active chart'),
+  }, wrapOk('alert_create', ({ condition, price, message, symbol }) => core.create({ condition, price, message, symbol })));
 
   server.tool('alert_list',
     'List active alerts',
