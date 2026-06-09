@@ -160,7 +160,59 @@ export async function list() {
   return { success: true, alert_count: result?.alerts?.length || 0, source: 'internal_api', alerts: result?.alerts || [], error: result?.error };
 }
 
-export async function deleteAlerts({ delete_all }) {
+export async function deleteAlerts({ delete_all, alert_id, alert_ids } = {}) {
+  // Collect explicit ids: alert_id (scalar) and/or alert_ids (array), normalised to finite numbers.
+  const ids = []
+    .concat(Array.isArray(alert_ids) ? alert_ids : (alert_ids != null ? [alert_ids] : []))
+    .concat(alert_id != null && alert_id !== '' ? [alert_id] : [])
+    .map(Number)
+    .filter(Number.isFinite);
+
+  // delete_all without explicit ids: resolve current alert ids via REST list(), then delete by id.
+  // Falls through to the DOM context-menu fallback if listing fails or returns nothing.
+  if (delete_all && ids.length === 0) {
+    try {
+      const listed = await list();
+      for (const a of (listed?.alerts || [])) {
+        const n = Number(a.alert_id);
+        if (Number.isFinite(n)) ids.push(n);
+      }
+    } catch (e) { /* fall through to DOM fallback */ }
+  }
+
+  // --- Primary path: REST delete_alerts in the page main world (same origin +
+  // credentials as TradingView's own alert panel), mirroring core.list()/create().
+  // CRITICAL: no Content-Type header — application/json triggers a CORS preflight
+  // that pricealerts.tradingview.com rejects -> "Failed to fetch". Verified live
+  // 2026-06-08: POST /delete_alerts {payload:{alert_ids:[…]}} -> { s:'ok' }.
+  if (ids.length > 0) {
+    const rest = await evaluateAsync(`
+      (async function(){
+        try {
+          var r = await fetch('https://pricealerts.tradingview.com/delete_alerts', {
+            method: 'POST', credentials: 'include',
+            body: JSON.stringify({ payload: { alert_ids: ${JSON.stringify(ids)} } }) });
+          var j = await r.json();
+          return { ok: (r.status === 200 && j && j.s === 'ok'), status: r.status,
+                   errmsg: (j && j.errmsg) || null };
+        } catch(e){ return { ok:false, error: e.message }; }
+      })()
+    `);
+    if (rest && rest.ok) {
+      return { success: true, deleted_ids: ids, count: ids.length,
+               mode: delete_all ? 'all' : 'by_id', source: 'rest_api' };
+    }
+    // Explicit-id delete has no DOM equivalent — report the REST failure directly.
+    if (!delete_all) {
+      return { success: false, requested_ids: ids, count: 0,
+               error: (rest && (rest.error || rest.errmsg)) || 'delete_alerts returned not-ok',
+               source: 'rest_api' };
+    }
+    // delete_all + REST failure -> fall through to DOM fallback below.
+  }
+
+  // --- Fallback path (delete_all only): DOM context-menu. Best-effort, kept so the
+  // tool degrades gracefully if the private REST shape ever changes.
   if (delete_all) {
     const result = await evaluate(`
       (function() {
@@ -176,5 +228,6 @@ export async function deleteAlerts({ delete_all }) {
     `);
     return { success: true, note: 'Alert deletion requires manual confirmation in the context menu.', context_menu_opened: result?.context_menu_opened || false, source: 'dom_fallback' };
   }
-  throw new Error('Individual alert deletion not yet supported. Use delete_all: true.');
+
+  throw new Error('Provide alert_id, alert_ids, or delete_all: true.');
 }
