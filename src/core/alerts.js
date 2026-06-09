@@ -14,7 +14,7 @@ function mapCondition(condition) {
   return 'cross'; // crossing / default
 }
 
-export async function create({ condition, price, message }) {
+export async function create({ condition, price, message, symbol }) {
   const p = requireFinite(price, 'price');
   const condType = mapCondition(condition);
 
@@ -27,15 +27,21 @@ export async function create({ condition, price, message }) {
   const rest = await evaluateAsync(`
     (async function(){
       try {
+        // Explicit symbol (e.g. "MOEX:VTBR") → create off-chart without switching the
+        // active chart (so a parallel session's chart isn't hijacked). Falls back to
+        // the active chart's symbol when no explicit symbol is passed (legacy behavior).
+        var explicitSym = ${symbol ? safeString(String(symbol)) : 'null'};
         var c = window.TradingViewApi.activeChart();
-        var resolution = c.resolution() || '1D';
-        var pro = null, currency = null;
-        try { var ext = c.symbolExt(); pro = ext.pro_name || ext.full_name; } catch(e){}
-        try {
-          var w = window.TradingViewApi._activeChartWidgetWV.value();
-          var si = w._chartWidget.model().mainSeries().symbolInfo();
-          if (si) { pro = si.pro_name || si.full_name || pro; currency = si.currency_code; }
-        } catch(e){}
+        var resolution = (c && c.resolution && c.resolution()) || '1D';
+        var pro = explicitSym, currency = null;
+        if (!explicitSym) {
+          try { var ext = c.symbolExt(); pro = ext.pro_name || ext.full_name; } catch(e){}
+          try {
+            var w = window.TradingViewApi._activeChartWidgetWV.value();
+            var si = w._chartWidget.model().mainSeries().symbolInfo();
+            if (si) { pro = si.pro_name || si.full_name || pro; currency = si.currency_code; }
+          } catch(e){}
+        }
         if (!pro) return { ok:false, error:'could not resolve chart symbol' };
         var symObj = { symbol: pro };
         if (currency) { symObj['adjustment'] = 'splits'; symObj['currency-id'] = currency; }
