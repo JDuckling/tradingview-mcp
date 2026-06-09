@@ -14,7 +14,9 @@ export function registerAlertTools(server) {
     {},
     wrapOk('alert_list', () => core.list()));
 
-  server.tool('alert_delete', 'Delete all alerts or open context menu for deletion', {
+  server.tool('alert_delete', 'Delete alerts by id (alert_id / alert_ids from alert_list) or all of them (delete_all)', {
+    alert_id: z.coerce.number().optional().describe('Delete a single alert by its alert_id (from alert_list)'),
+    alert_ids: z.array(z.coerce.number()).optional().describe('Delete multiple alerts by alert_id'),
     delete_all: z.coerce.boolean().optional().describe('Delete all alerts'),
-  }, wrapOk('alert_delete', ({ delete_all }) => core.deleteAlerts({ delete_all })));
+  }, wrapOk('alert_delete', ({ alert_id, alert_ids, delete_all }) => core.deleteAlerts({ alert_id, alert_ids, delete_all })));
 }

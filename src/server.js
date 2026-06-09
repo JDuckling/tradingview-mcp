@@ -19,7 +19,7 @@ import { wrapServer } from './lib/failure-log.js';
 const server = new McpServer(
   {
     name: 'tradingview',
-    version: '3.1.2',
+    version: '3.1.3',
     description: 'AI-assisted TradingView chart analysis and Pine Script development via Chrome DevTools Protocol',
   },
   {
