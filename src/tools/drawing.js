@@ -18,7 +18,7 @@ export function registerDrawingTools(server) {
         shape: z.string(),
         point: z.object({ time: z.coerce.number(), price: z.coerce.number() }),
         point2: z.object({ time: z.coerce.number(), price: z.coerce.number() }).optional(),
-        overrides: z.union([z.string(), z.record(z.any())]).optional(),
+        overrides: z.any().optional(),
         text: z.string().optional(),
       })).optional().describe('Shapes to draw (same fields as draw_shape; overrides object or JSON string)'),
       alerts: z.array(z.object({

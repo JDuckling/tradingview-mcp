@@ -1,6 +1,6 @@
 {
   "name": "tradingview-mcp",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "MCP bridge for TradingView Desktop via Chrome DevTools Protocol",
   "type": "module",
   "main": "src/server.js",
