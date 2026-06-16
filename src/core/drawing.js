@@ -2,6 +2,7 @@
  * Core drawing logic.
  */
 import { evaluate as _evaluate, getChartApi as _getChartApi, safeString, requireFinite } from '../connection.js';
+import * as alertCore from './alerts.js';
 
 function _resolve(deps) {
   return { evaluate: deps?.evaluate || _evaluate, getChartApi: deps?.getChartApi || _getChartApi };
@@ -114,4 +115,64 @@ export async function clearAll({ _deps } = {}) {
   const apiPath = await getChartApi();
   await evaluate(`${apiPath}.removeAllShapes()`);
   return { success: true, action: 'all_shapes_removed' };
+}
+
+/**
+ * Execute a whole annotation plan in one call: draw many shapes and/or create
+ * many alerts (e.g. the `chart_annotator` draw_plan.json from the AlphaSignal
+ * project). Continue-on-error — one bad item never aborts the batch; every item
+ * gets a per-index result, plus an aggregate summary.
+ *
+ * Shapes draw on the ACTIVE chart (caller sets the symbol first). Alerts use
+ * their own optional `symbol` field (off-chart REST create) and are independent
+ * of the active chart.
+ *
+ * `_deps.drawShape` / `_deps.createAlert` are injectable for unit tests; they
+ * default to the real CDP/REST-backed functions. `_deps` is also threaded into
+ * the real `drawShape` so its own evaluate/getChartApi DI keeps working.
+ *
+ * @param {{shapes?: object[], alertSpecs?: object[], _deps?: object}} args
+ * @returns {Promise<{success: boolean, shapes: object[], alerts: object[], summary: object}>}
+ */
+export async function drawBatch({ shapes = [], alertSpecs = [], _deps } = {}) {
+  const drawOne = _deps?.drawShape || drawShape;
+  const createOne = _deps?.createAlert || alertCore.create;
+
+  const shapeResults = [];
+  for (let i = 0; i < shapes.length; i++) {
+    const spec = shapes[i] || {};
+    try {
+      const r = await drawOne({ ...spec, _deps });
+      shapeResults.push({ index: i, ok: true, shape: spec.shape, entity_id: r?.entity_id ?? null });
+    } catch (e) {
+      shapeResults.push({ index: i, ok: false, shape: spec.shape, error: e?.message || String(e) });
+    }
+  }
+
+  const alertResults = [];
+  for (let i = 0; i < alertSpecs.length; i++) {
+    const spec = alertSpecs[i] || {};
+    try {
+      const r = await createOne({ condition: spec.condition, price: spec.price, message: spec.message, symbol: spec.symbol });
+      alertResults.push({ index: i, ok: true, symbol: r?.symbol ?? spec.symbol ?? null, price: r?.price ?? spec.price ?? null, alert_id: r?.alert_id ?? null });
+    } catch (e) {
+      alertResults.push({ index: i, ok: false, symbol: spec.symbol, error: e?.message || String(e) });
+    }
+  }
+
+  const shapesDrawn = shapeResults.filter(r => r.ok).length;
+  const alertsCreated = alertResults.filter(r => r.ok).length;
+  return {
+    success: true,
+    shapes: shapeResults,
+    alerts: alertResults,
+    summary: {
+      shapes_total: shapes.length,
+      shapes_drawn: shapesDrawn,
+      shapes_failed: shapes.length - shapesDrawn,
+      alerts_total: alertSpecs.length,
+      alerts_created: alertsCreated,
+      alerts_failed: alertSpecs.length - alertsCreated,
+    },
+  };
 }
